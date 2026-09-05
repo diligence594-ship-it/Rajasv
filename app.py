@@ -1,57 +1,109 @@
 import os
 from flask import Flask
 from threading import Thread
-from pyrogram import Client
-import asyncio
+from pyrogram import idle
+from Extractor import app
+from Extractor.modules import ALL_MODULES
 from cleanup import start_cleanup_scheduler
 
-# Start the cleanup scheduler
-scheduler = start_cleanup_scheduler()
 
-# Your existing app code continues here...
+# --------------------------------------------------
+# Flask
+# --------------------------------------------------
 
-# Flask app to keep Heroku dyno alive
-app = Flask(__name__)
+web = Flask(__name__)
 
-@app.route('/')
-def hello_world():
-    return 'Hello from Tech VJ'
+
+@web.route("/")
+def home():
+    return "Bot is running!"
+
 
 def run_flask():
-    app.run(host='0.0.0.0', port=8080)
+    port = int(os.getenv("PORT", 8080))
+    web.run(
+        host="0.0.0.0",
+        port=port
+    )
 
-# Start Flask in a separate thread
-Thread(target=run_flask).start()
 
-# Fetch credentials from environment variables
-api_id = os.getenv("API_ID")
-api_hash = os.getenv("API_HASH")
-bot_token = os.getenv("BOT_TOKEN")
+Thread(
+    target=run_flask,
+    daemon=True
+).start()
 
-# Pyrogram bot setup with reconnection logic
-bot = Client(
-    "my_bot",
-    api_id=api_id,
-    api_hash=api_hash,
-    bot_token=bot_token,
-    sleep_threshold=60,  # Wait 60 seconds before reconnecting
-    max_retries=5  # Retry 5 times before giving up
-)
 
-@bot.on_message()
-async def my_handler(client, message):
-    await message.reply("Hello from Tech VJ Bot!")
+# --------------------------------------------------
+# Cleanup scheduler
+# --------------------------------------------------
 
-async def main():
+try:
+    start_cleanup_scheduler()
+    print("Cleanup scheduler started.")
+except Exception as e:
+    print(f"Cleanup scheduler error: {e}")
+
+
+# --------------------------------------------------
+# Load modules
+# --------------------------------------------------
+
+for module in ALL_MODULES:
     try:
-        await bot.start()
-        print("Bot is running...")
-        await bot.idle()  # Keep the bot running
+        __import__("Extractor.modules." + module)
+        print(f"Loaded module: {module}")
     except Exception as e:
-        print(f"Error: {e}")
-        await bot.stop()
-        await asyncio.sleep(5)  # Wait 5 seconds before restarting
-        await bot.start()
+        print(f"Failed to load {module}: {e}")
+
+
+# --------------------------------------------------
+# Keep bot alive
+# --------------------------------------------------
 
 if __name__ == "__main__":
-    bot.run(main())
+    print("Bot is already started by Extractor.")
+
+    try:
+        idle()
+    except Exception as e:
+        print(f"Bot stopped: {e}")
+    finally:
+        print("Application stopped.")
+
+Thread(
+    target=run_flask,
+    daemon=True
+).start()
+
+
+# --------------------------------------------------
+# Load all bot modules
+# --------------------------------------------------
+for module in ALL_MODULES:
+    try:
+        __import__("Extractor.modules." + module)
+        print(f"Loaded module: {module}")
+    except Exception as e:
+        print(f"Failed to load {module}: {e}")
+
+
+# --------------------------------------------------
+# Start bot
+# --------------------------------------------------
+if __name__ == "__main__":
+    print("Starting Telegram bot...")
+
+    try:
+        app.start()
+        print("Bot started successfully!")
+
+        idle()
+
+    except Exception as e:
+        print(f"Bot error: {e}")
+
+    finally:
+        try:
+            app.stop()
+        except Exception:
+            pass
